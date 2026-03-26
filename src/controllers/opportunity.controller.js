@@ -1,0 +1,29 @@
+const service = require('../services/opportunity.service');
+
+exports.createOpportunity = async (req, res) => {
+    try {
+        const result = await service.createOpportunity(req.body);
+        res.status(201).json(result);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+exports.getOpportunities = async (req, res) => {
+    try {
+        const { codigo_cliente } = req.query;
+        const data = await service.getOpportunities(codigo_cliente);
+        res.json(data);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+exports.updateOpportunityState = async (req, res) => {
+    try {
+        const result = await service.updateOpportunityState(req.params.id, req.body.estado);
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
