@@ -20,9 +20,9 @@ Puedes configurar conexion con URL completa (recomendado) o por variables separa
 ### Variables para usuarios iniciales (opcional)
 
 - `AUTH_SEED_DEFAULT_USERS` (default `true`)
-- `SEED_MANAGER_NAME` (default `Gerente General`)
-- `SEED_MANAGER_EMAIL` (default `gerente@erp.local`)
-- `SEED_MANAGER_PASSWORD` (default `Gerente123!`)
+- `SEED_IT_NAME` (default `Administrador IT`)
+- `SEED_IT_EMAIL` (default `it@erp.local`)
+- `SEED_IT_PASSWORD` (default `ItAdmin123!`)
 
 Ejemplo:
 

@@ -64,10 +64,10 @@ async function seedDefaultUsers() {
     }
 
     await createUserIfNotExists({
-        nombre: process.env.SEED_MANAGER_NAME || 'Gerente General',
-        correo: process.env.SEED_MANAGER_EMAIL || 'gerente@erp.local',
-        password: process.env.SEED_MANAGER_PASSWORD || 'Gerente123!',
-        rol: 'gerente'
+        nombre: process.env.SEED_IT_NAME || 'Administrador IT',
+        correo: process.env.SEED_IT_EMAIL || 'it@erp.local',
+        password: process.env.SEED_IT_PASSWORD || 'ItAdmin123!',
+        rol: 'it'
     });
 }
 
