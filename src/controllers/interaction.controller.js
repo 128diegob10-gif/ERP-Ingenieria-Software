@@ -2,7 +2,12 @@ const service = require('../services/interaction.service');
 
 exports.createInteraction = async (req, res) => {
     try {
-        const result = await service.create(req.body);
+        const payload = {
+            ...req.body,
+            usuario: req.user?.nombre || req.user?.correo || req.body?.usuario
+        };
+
+        const result = await service.create(payload);
         res.status(201).json(result);
     } catch (error) {
         res.status(400).json({ error: error.message });

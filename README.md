@@ -14,6 +14,15 @@ Puedes configurar conexion con URL completa (recomendado) o por variables separa
 ### Opcion recomendada (URL)
 
 - `DATABASE_URL` (o `MYSQL_URL`)
+- `JWT_SECRET` (obligatoria en produccion)
+- `JWT_EXPIRES_IN` (opcional, default `8h`)
+
+### Variables para usuarios iniciales (opcional)
+
+- `AUTH_SEED_DEFAULT_USERS` (default `true`)
+- `SEED_MANAGER_NAME` (default `Gerente General`)
+- `SEED_MANAGER_EMAIL` (default `gerente@erp.local`)
+- `SEED_MANAGER_PASSWORD` (default `Gerente123!`)
 
 Ejemplo:
 
@@ -41,6 +50,18 @@ npm run dev
 
 - `GET /` info general
 - `GET /health` healthcheck
+
+## Autenticacion y Roles
+
+- `POST /api/auth/login` inicia sesion con `correo` y `password`
+- `GET /api/auth/me` valida sesion activa (Bearer token)
+
+Roles soportados:
+
+- `gerente`: acceso completo
+- `vendedor`: acceso a funciones comerciales permitidas
+
+Las contrasenas se almacenan con hash `bcrypt` en tabla `usuarios`.
 
 ## Deploy en Railway
 

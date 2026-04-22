@@ -1,16 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/sales.controller');
+const { authorizeRoles } = require('../middleware/auth.middleware');
 
-router.get('/clients', controller.getSalesClients);
-router.get('/clients/search', controller.searchClients);
-router.get('/clients/:clientRef', controller.getClientDetail);
-router.post('/clients', controller.createClient);
-router.put('/clients/:clientRef', controller.updateClient);
-router.delete('/clients/:clientRef', controller.deleteClient);
-router.get('/vendedores', controller.getSalesVendedores);
-router.get('/vendedores/rendimiento', controller.getVendedoresRendimiento);
-router.get('/report', controller.getSalesReport);
-router.post('/', controller.createSale);
+router.get('/clients', authorizeRoles('gerente', 'vendedor'), controller.getSalesClients);
+router.get('/clients/search', authorizeRoles('gerente'), controller.searchClients);
+router.get('/clients/:clientRef', authorizeRoles('gerente', 'vendedor'), controller.getClientDetail);
+router.post('/clients', authorizeRoles('gerente'), controller.createClient);
+router.put('/clients/:clientRef', authorizeRoles('gerente'), controller.updateClient);
+router.delete('/clients/:clientRef', authorizeRoles('gerente'), controller.deleteClient);
+router.get('/vendedores', authorizeRoles('gerente'), controller.getSalesVendedores);
+router.get('/vendedores/rendimiento', authorizeRoles('gerente'), controller.getVendedoresRendimiento);
+router.get('/report', authorizeRoles('gerente', 'vendedor'), controller.getSalesReport);
+router.post('/', authorizeRoles('gerente', 'vendedor'), controller.createSale);
 
 module.exports = router;

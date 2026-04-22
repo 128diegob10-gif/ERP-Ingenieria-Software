@@ -20,7 +20,13 @@ exports.getSalesVendedores = async (req, res) => {
 
 exports.getSalesReport = async (req, res) => {
     try {
-        const { period, codigo_cliente, vendedor } = req.query;
+        const { period, codigo_cliente } = req.query;
+
+        // Un vendedor solo puede consultar su propio reporte.
+        const vendedor = req.user?.rol === 'vendedor'
+            ? (req.user.nombre || req.user.correo)
+            : req.query.vendedor;
+
         const data = await service.getReport(period, codigo_cliente, vendedor);
         res.json(data);
     } catch (error) {
@@ -40,7 +46,13 @@ exports.getVendedoresRendimiento = async (req, res) => {
 
 exports.createSale = async (req, res) => {
     try {
-        const result = await service.create(req.body);
+        const payload = { ...req.body };
+
+        if (req.user?.rol === 'vendedor') {
+            payload.vendedor = req.user.nombre || req.user.correo;
+        }
+
+        const result = await service.create(payload);
         res.status(201).json(result);
     } catch (error) {
         res.status(400).json({ error: error.message });

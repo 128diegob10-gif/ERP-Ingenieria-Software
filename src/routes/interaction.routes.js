@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/interaction.controller');
+const { authorizeRoles } = require('../middleware/auth.middleware');
 
-router.post('/', controller.createInteraction);
-router.get('/:codigoCliente', controller.getByClient);
-router.get('/', controller.getAll);
+router.post('/', authorizeRoles('gerente', 'vendedor'), controller.createInteraction);
+router.get('/:codigoCliente', authorizeRoles('gerente', 'vendedor'), controller.getByClient);
+router.get('/', authorizeRoles('gerente'), controller.getAll);
 
 
 module.exports = router;
