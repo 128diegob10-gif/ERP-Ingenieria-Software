@@ -23,6 +23,7 @@ app.get('/', (req, res) => {
     endpoints: [
       '/api/auth/login',
       '/api/users',
+      '/api/tickets',
       '/api/interactions',
       '/api/sales',
       '/api/sales/clients/search',
@@ -38,6 +39,9 @@ app.use('/api/auth', authRoutes);
 
 const usersRoutes = require('./routes/users.routes');
 app.use('/api/users', authenticate, authorizeRoles('it'), usersRoutes);
+
+const ticketRoutes = require('./routes/ticket.routes');
+app.use('/api/tickets', authenticate, authorizeRoles('gerente', 'vendedor'), ticketRoutes);
 
 const interactionRoutes = require('./routes/interaction.routes');
 app.use('/api/interactions', authenticate, authorizeRoles('gerente', 'vendedor'), interactionRoutes);

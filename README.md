@@ -69,6 +69,12 @@ Administracion de usuarios (solo rol `it`):
 - `PUT /api/users/:id` actualizar usuario
 - `DELETE /api/users/:id` eliminar usuario
 
+Consulta de tickets de soporte (roles `gerente` y `vendedor`):
+
+- `POST /api/tickets` crear ticket
+- `GET /api/tickets?codigo_cliente=CLI-0001` listar tickets por cliente
+- `GET /api/tickets/:id` ver detalle del ticket
+
 Las contrasenas se almacenan con hash `bcrypt` en tabla `usuarios`.
 
 ## Deploy en Railway
