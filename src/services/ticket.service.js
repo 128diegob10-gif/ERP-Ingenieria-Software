@@ -160,3 +160,73 @@ exports.getTicketDetail = async (ticketId) => {
         prioridad: normalizePriority(ticket.prioridad)
     };
 };
+
+exports.updateTicket = async (ticketId, data) => {
+    await ensureTicketsTable();
+
+    const id = Number(ticketId);
+    if (!Number.isInteger(id) || id <= 0) {
+        throw new Error('Id de ticket inválido');
+    }
+
+    const currentTicket = await exports.getTicketDetail(id);
+    const titulo = String(data.titulo ?? currentTicket.titulo ?? '').trim();
+    const descripcion = String(data.descripcion ?? currentTicket.descripcion ?? '').trim();
+    const estado = normalizeState(data.estado ?? currentTicket.estado);
+    const prioridad = normalizePriority(data.prioridad ?? currentTicket.prioridad);
+
+    if (!titulo) {
+        throw new Error('El título del ticket es obligatorio');
+    }
+
+    await db.execute(
+        `
+            UPDATE tickets_soporte
+            SET
+                titulo = ?,
+                descripcion = ?,
+                estado = ?,
+                prioridad = ?,
+                fecha_actualizacion = NOW()
+            WHERE id = ?
+        `,
+        [
+            titulo,
+            descripcion || null,
+            estado,
+            prioridad,
+            id
+        ]
+    );
+
+    return {
+        message: 'Ticket actualizado correctamente',
+        ticket: await exports.getTicketDetail(id)
+    };
+};
+
+exports.deleteTicket = async (ticketId) => {
+    await ensureTicketsTable();
+
+    const id = Number(ticketId);
+    if (!Number.isInteger(id) || id <= 0) {
+        throw new Error('Id de ticket inválido');
+    }
+
+    const [result] = await db.execute(
+        `
+            DELETE FROM tickets_soporte
+            WHERE id = ?
+            LIMIT 1
+        `,
+        [id]
+    );
+
+    if (!result.affectedRows) {
+        throw new Error('Ticket no encontrado');
+    }
+
+    return {
+        message: 'Ticket eliminado correctamente'
+    };
+};

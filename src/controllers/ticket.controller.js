@@ -27,3 +27,23 @@ exports.getTicketDetail = async (req, res) => {
         res.status(status).json({ error: error.message });
     }
 };
+
+exports.updateTicket = async (req, res) => {
+    try {
+        const result = await service.updateTicket(req.params.id, req.body);
+        res.json(result);
+    } catch (error) {
+        const status = error.message === 'Ticket no encontrado' ? 404 : 400;
+        res.status(status).json({ error: error.message });
+    }
+};
+
+exports.deleteTicket = async (req, res) => {
+    try {
+        const result = await service.deleteTicket(req.params.id);
+        res.json(result);
+    } catch (error) {
+        const status = error.message === 'Ticket no encontrado' ? 404 : 400;
+        res.status(status).json({ error: error.message });
+    }
+};
