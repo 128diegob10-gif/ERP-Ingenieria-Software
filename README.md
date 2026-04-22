@@ -60,6 +60,14 @@ Roles soportados:
 
 - `gerente`: acceso completo
 - `vendedor`: acceso a funciones comerciales permitidas
+- `it`: acceso a configuracion y administracion de usuarios
+
+Administracion de usuarios (solo rol `it`):
+
+- `GET /api/users` listar usuarios
+- `POST /api/users` crear usuario
+- `PUT /api/users/:id` actualizar usuario
+- `DELETE /api/users/:id` eliminar usuario
 
 Las contrasenas se almacenan con hash `bcrypt` en tabla `usuarios`.
 

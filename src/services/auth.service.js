@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 const { getJwtSecret } = require('../middleware/auth.middleware');
 
-const USER_ROLES = ['gerente', 'vendedor'];
+const USER_ROLES = ['gerente', 'vendedor', 'it'];
 
 function normalizeEmail(value) {
     return String(value || '').trim().toLowerCase();
@@ -16,7 +16,7 @@ async function ensureUsersTable() {
             nombre VARCHAR(120) NOT NULL,
             correo VARCHAR(190) NOT NULL,
             password_hash VARCHAR(255) NOT NULL,
-            rol ENUM('gerente', 'vendedor') NOT NULL DEFAULT 'vendedor',
+            rol ENUM('gerente', 'vendedor', 'it') NOT NULL DEFAULT 'vendedor',
             activo TINYINT(1) NOT NULL DEFAULT 1,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -25,6 +25,12 @@ async function ensureUsersTable() {
     `;
 
     await db.execute(sql);
+
+    // Mantiene compatibilidad si la tabla existia antes sin el rol IT.
+    await db.execute(`
+        ALTER TABLE usuarios
+        MODIFY COLUMN rol ENUM('gerente', 'vendedor', 'it') NOT NULL DEFAULT 'vendedor'
+    `);
 }
 
 async function createUserIfNotExists({ nombre, correo, password, rol }) {
@@ -141,5 +147,7 @@ async function initializeAuth() {
 
 module.exports = {
     initializeAuth,
-    validateCredentials
+    validateCredentials,
+    ensureUsersTable,
+    USER_ROLES
 };

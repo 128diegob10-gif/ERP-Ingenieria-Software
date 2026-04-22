@@ -22,6 +22,7 @@ app.get('/', (req, res) => {
     message: 'API ERP Ventas funcionando correctamente',
     endpoints: [
       '/api/auth/login',
+      '/api/users',
       '/api/interactions',
       '/api/sales',
       '/api/sales/clients/search',
@@ -34,6 +35,9 @@ app.get('/', (req, res) => {
 // Rutas
 const authRoutes = require('./routes/auth.routes');
 app.use('/api/auth', authRoutes);
+
+const usersRoutes = require('./routes/users.routes');
+app.use('/api/users', authenticate, authorizeRoles('it'), usersRoutes);
 
 const interactionRoutes = require('./routes/interaction.routes');
 app.use('/api/interactions', authenticate, authorizeRoles('gerente', 'vendedor'), interactionRoutes);
