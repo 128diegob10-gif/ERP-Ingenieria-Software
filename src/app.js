@@ -26,6 +26,7 @@ app.get('/', (req, res) => {
       '/api/tickets',
       '/api/interactions',
       '/api/sales',
+      '/api/sales/loyalty/config',
       '/api/sales/clients/search',
       '/api/sales/clients/:clientRef',
       '/api/opportunities'

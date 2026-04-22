@@ -59,6 +59,24 @@ exports.createSale = async (req, res) => {
     }
 };
 
+exports.getLoyaltyConfig = async (req, res) => {
+    try {
+        const data = await service.getLoyaltyConfig();
+        res.json(data);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+exports.updateLoyaltyConfig = async (req, res) => {
+    try {
+        const result = await service.updateLoyaltyConfig(req.body);
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
 exports.searchClients = async (req, res) => {
     try {
         const { q = '', limit = '20' } = req.query;

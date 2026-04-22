@@ -74,6 +74,21 @@ Consulta de tickets de soporte (roles `gerente` y `vendedor`):
 - `POST /api/tickets` crear ticket
 - `GET /api/tickets?codigo_cliente=CLI-0001` listar tickets por cliente
 - `GET /api/tickets/:id` ver detalle del ticket
+- `PUT /api/tickets/:id` actualizar ticket
+- `DELETE /api/tickets/:id` eliminar ticket
+
+Ventas y fidelizacion:
+
+- `POST /api/sales` crear venta
+- `GET /api/sales/clients/:clientRef` ver perfil del cliente, incluyendo puntos e historial
+- `GET /api/sales/loyalty/config` consultar regla de puntos (solo `gerente`)
+- `PUT /api/sales/loyalty/config` actualizar regla de puntos (solo `gerente`)
+
+Regla inicial de fidelizacion:
+
+- 1 punto por cada $10 de compra
+- configurable desde la API y el panel de configuracion del gerente
+- se genera un log `PUNTOS_OBTENIDOS` vinculado al `factura_id` de la venta
 
 Las contrasenas se almacenan con hash `bcrypt` en tabla `usuarios`.
 

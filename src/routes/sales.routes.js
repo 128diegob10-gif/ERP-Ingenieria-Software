@@ -9,6 +9,8 @@ router.get('/clients/:clientRef', authorizeRoles('gerente', 'vendedor'), control
 router.post('/clients', authorizeRoles('gerente'), controller.createClient);
 router.put('/clients/:clientRef', authorizeRoles('gerente'), controller.updateClient);
 router.delete('/clients/:clientRef', authorizeRoles('gerente'), controller.deleteClient);
+router.get('/loyalty/config', authorizeRoles('gerente'), controller.getLoyaltyConfig);
+router.put('/loyalty/config', authorizeRoles('gerente'), controller.updateLoyaltyConfig);
 router.get('/vendedores', authorizeRoles('gerente'), controller.getSalesVendedores);
 router.get('/vendedores/rendimiento', authorizeRoles('gerente'), controller.getVendedoresRendimiento);
 router.get('/report', authorizeRoles('gerente', 'vendedor'), controller.getSalesReport);

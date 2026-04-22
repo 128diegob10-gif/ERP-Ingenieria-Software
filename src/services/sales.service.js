@@ -1,6 +1,8 @@
 const db = require('../config/database');
+const DEFAULT_POINTS_PER_AMOUNT = 10;
+const DEFAULT_POINTS_AWARDED = 1;
 
-async function hasTable(tableName) {
+async function hasTable(tableName, executor = db) {
     const sql = `
         SELECT 1
         FROM INFORMATION_SCHEMA.TABLES
@@ -9,11 +11,11 @@ async function hasTable(tableName) {
         LIMIT 1
     `;
 
-    const [rows] = await db.execute(sql, [tableName]);
+    const [rows] = await executor.execute(sql, [tableName]);
     return rows.length > 0;
 }
 
-async function getTableColumns(tableName) {
+async function getTableColumns(tableName, executor = db) {
     const sql = `
         SELECT COLUMN_NAME
         FROM INFORMATION_SCHEMA.COLUMNS
@@ -21,11 +23,11 @@ async function getTableColumns(tableName) {
           AND TABLE_NAME = ?
     `;
 
-    const [rows] = await db.execute(sql, [tableName]);
+    const [rows] = await executor.execute(sql, [tableName]);
     return rows.map((row) => row.COLUMN_NAME);
 }
 
-async function hasColumn(tableName, columnName) {
+async function hasColumn(tableName, columnName, executor = db) {
     const sql = `
         SELECT 1
         FROM INFORMATION_SCHEMA.COLUMNS
@@ -35,11 +37,12 @@ async function hasColumn(tableName, columnName) {
         LIMIT 1
     `;
 
-    const [rows] = await db.execute(sql, [tableName, columnName]);
+    const [rows] = await executor.execute(sql, [tableName, columnName]);
     return rows.length > 0;
 }
 
 exports.getClients = async () => {
+    await ensureLoyaltyInfrastructure();
     const hasClientesTable = await hasTable('clientes');
 
     if (hasClientesTable) {
@@ -169,7 +172,200 @@ function buildClientReferenceFilter(ref, idColumn, codeColumn) {
     return { whereSql, whereParams };
 }
 
+async function ensureClientLoyaltyColumn(executor = db) {
+    const clientesTableExists = await hasTable('clientes', executor);
+    if (!clientesTableExists) {
+        return;
+    }
+
+    const hasPointsColumn = await hasColumn('clientes', 'puntos_acumulados', executor);
+    if (!hasPointsColumn) {
+        await executor.query(`
+            ALTER TABLE clientes
+            ADD COLUMN puntos_acumulados INT NOT NULL DEFAULT 0
+        `);
+    }
+}
+
+async function ensureLoyaltyConfigTable(executor = db) {
+    await executor.query(`
+        CREATE TABLE IF NOT EXISTS configuracion_fidelizacion (
+            id INT NOT NULL PRIMARY KEY,
+            monto_por_punto DECIMAL(10,2) NOT NULL DEFAULT 10.00,
+            puntos_por_bloque INT NOT NULL DEFAULT 1,
+            fecha_actualizacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+    `);
+
+    await executor.query(`
+        INSERT INTO configuracion_fidelizacion (id, monto_por_punto, puntos_por_bloque)
+        VALUES (1, ${DEFAULT_POINTS_PER_AMOUNT.toFixed(2)}, ${DEFAULT_POINTS_AWARDED})
+        ON DUPLICATE KEY UPDATE id = id
+    `);
+}
+
+async function ensurePointsLogTable(executor = db) {
+    await executor.query(`
+        CREATE TABLE IF NOT EXISTS puntos_cliente_log (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            cliente_id INT NULL,
+            codigo_cliente VARCHAR(100) NOT NULL,
+            factura_id INT NOT NULL,
+            puntos_obtenidos INT NOT NULL,
+            total_compra DECIMAL(10,2) NOT NULL,
+            monto_por_punto DECIMAL(10,2) NOT NULL,
+            puntos_por_bloque INT NOT NULL,
+            tipo_evento VARCHAR(60) NOT NULL DEFAULT 'PUNTOS_OBTENIDOS',
+            fecha_registro DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_puntos_cliente_id (cliente_id),
+            INDEX idx_puntos_codigo_cliente (codigo_cliente),
+            INDEX idx_puntos_factura_id (factura_id)
+        )
+    `);
+}
+
+async function ensureLoyaltyInfrastructure(executor = db) {
+    await ensureClientLoyaltyColumn(executor);
+    await ensureLoyaltyConfigTable(executor);
+    await ensurePointsLogTable(executor);
+}
+
+function normalizeLoyaltyConfig(row) {
+    return {
+        monto_por_punto: Number(row?.monto_por_punto || DEFAULT_POINTS_PER_AMOUNT),
+        puntos_por_bloque: Number(row?.puntos_por_bloque || DEFAULT_POINTS_AWARDED),
+        fecha_actualizacion: row?.fecha_actualizacion || null
+    };
+}
+
+async function getLoyaltyConfigRecord(executor = db) {
+    await ensureLoyaltyInfrastructure(executor);
+
+    const [rows] = await executor.execute(`
+        SELECT monto_por_punto, puntos_por_bloque, fecha_actualizacion
+        FROM configuracion_fidelizacion
+        WHERE id = 1
+        LIMIT 1
+    `);
+
+    return normalizeLoyaltyConfig(rows[0] || {});
+}
+
+function calculateEarnedPoints(total, config) {
+    const purchaseTotal = Number(total || 0);
+    const amountPerPoint = Number(config?.monto_por_punto || 0);
+    const awardedPerBlock = Number(config?.puntos_por_bloque || 0);
+
+    if (!Number.isFinite(purchaseTotal) || purchaseTotal <= 0) {
+        return 0;
+    }
+
+    if (!Number.isFinite(amountPerPoint) || amountPerPoint <= 0) {
+        return 0;
+    }
+
+    if (!Number.isFinite(awardedPerBlock) || awardedPerBlock <= 0) {
+        return 0;
+    }
+
+    return Math.floor(purchaseTotal / amountPerPoint) * awardedPerBlock;
+}
+
+async function resolveClientForSale(data, executor = db) {
+    const columns = await getTableColumns('clientes', executor);
+    const idColumn = findColumn(columns, ['id', 'cliente_id', 'id_cliente']);
+    const codeColumn = findColumn(columns, ['codigo_cliente', 'codigo', 'cod_cliente']);
+
+    if (!idColumn && !codeColumn) {
+        throw new Error('No se encontró columna de identificación en clientes');
+    }
+
+    const clienteId = Number(data.cliente_id);
+    const codigoCliente = String(data.codigo_cliente || '').trim();
+
+    let filter;
+    if (Number.isInteger(clienteId) && clienteId > 0 && idColumn) {
+        filter = {
+            whereSql: `\`${idColumn}\` = ?`,
+            whereParams: [clienteId]
+        };
+    } else if (codigoCliente) {
+        filter = buildClientReferenceFilter(codigoCliente, idColumn, codeColumn);
+    } else {
+        throw new Error('Debe enviar una referencia válida del cliente');
+    }
+
+    const selectColumns = [];
+    if (idColumn) selectColumns.push(`\`${idColumn}\` AS cliente_id`);
+    if (codeColumn) selectColumns.push(`\`${codeColumn}\` AS codigo_cliente`);
+    selectColumns.push('COALESCE(puntos_acumulados, 0) AS puntos_acumulados');
+
+    const [rows] = await executor.execute(
+        `
+            SELECT ${selectColumns.join(', ')}
+            FROM clientes
+            WHERE ${filter.whereSql}
+            LIMIT 1
+        `,
+        filter.whereParams
+    );
+
+    if (rows.length === 0) {
+        throw new Error('Cliente no encontrado');
+    }
+
+    return {
+        clienteId: rows[0].cliente_id ?? null,
+        codigoCliente: rows[0].codigo_cliente ?? codigoCliente,
+        puntosAcumulados: Number(rows[0].puntos_acumulados || 0),
+        idColumn,
+        codeColumn
+    };
+}
+
+async function getClientPointsHistory(detail, executor = db) {
+    await ensureLoyaltyInfrastructure(executor);
+
+    const clientId = detail?.cliente_id ?? detail?.id ?? null;
+    const codigoCliente = String(detail?.codigo_cliente ?? detail?.codigo ?? detail?.cod_cliente ?? '').trim();
+
+    let whereSql = '';
+    let params = [];
+
+    if (Number.isInteger(Number(clientId)) && Number(clientId) > 0) {
+        whereSql = 'cliente_id = ?';
+        params = [Number(clientId)];
+    } else if (codigoCliente) {
+        whereSql = 'codigo_cliente = ?';
+        params = [codigoCliente];
+    } else {
+        return [];
+    }
+
+    const [rows] = await executor.execute(
+        `
+            SELECT
+                id,
+                tipo_evento,
+                factura_id,
+                puntos_obtenidos,
+                total_compra,
+                monto_por_punto,
+                puntos_por_bloque,
+                fecha_registro
+            FROM puntos_cliente_log
+            WHERE ${whereSql}
+            ORDER BY fecha_registro DESC
+            LIMIT 20
+        `,
+        params
+    );
+
+    return rows;
+}
+
 exports.searchClients = async (rawQuery, limit = 20) => {
+    await ensureLoyaltyInfrastructure();
     const query = String(rawQuery || '').trim();
     if (!query) {
         return [];
@@ -185,6 +381,7 @@ exports.searchClients = async (rawQuery, limit = 20) => {
     const phoneColumn = findColumn(columns, ['numero', 'telefono', 'celular', 'telefono_movil', 'telefono1']);
     const addressColumn = findColumn(columns, ['direccion', 'domicilio', 'direccion_fiscal']);
     const nitColumn = findColumn(columns, ['nit', 'nit_cliente', 'ruc', 'tax_id']);
+    const pointsColumn = findColumn(columns, ['puntos_acumulados']);
 
     const whereClauses = [];
     const params = [];
@@ -221,6 +418,7 @@ exports.searchClients = async (rawQuery, limit = 20) => {
     if (phoneColumn) selectColumns.push(`\`${phoneColumn}\` AS numero`);
     if (addressColumn) selectColumns.push(`\`${addressColumn}\` AS direccion`);
     if (nitColumn) selectColumns.push(`\`${nitColumn}\` AS nit`);
+    if (pointsColumn) selectColumns.push(`\`${pointsColumn}\` AS puntos_acumulados`);
 
     if (selectColumns.length === 0) {
         return [];
@@ -247,6 +445,8 @@ exports.searchClients = async (rawQuery, limit = 20) => {
 };
 
 exports.getClientDetail = async (clientRef) => {
+    await ensureLoyaltyInfrastructure();
+
     const ref = String(clientRef || '').trim();
     if (!ref) {
         throw new Error('Debe enviar una referencia de cliente');
@@ -264,7 +464,16 @@ exports.getClientDetail = async (clientRef) => {
         throw new Error('Cliente no encontrado');
     }
 
-    return rows[0];
+    const detail = rows[0];
+    const history = await getClientPointsHistory(detail);
+    const config = await getLoyaltyConfigRecord();
+
+    return {
+        ...detail,
+        puntos_acumulados: Number(detail.puntos_acumulados || 0),
+        historial_puntos: history,
+        configuracion_puntos: config
+    };
 };
 
 exports.createClient = async (data) => {
@@ -387,40 +596,121 @@ exports.create = async (data) => {
         throw new Error('El codigo_cliente es obligatorio');
     }
 
-    const codigoCliente = data.codigo_cliente ? String(data.codigo_cliente).trim() : '';
+    await ensureLoyaltyInfrastructure();
 
-    const insertColumns = [];
-    const insertValues = [];
-    const params = [];
+    const loyaltyConfig = await getLoyaltyConfigRecord();
+    const connection = await db.getConnection();
 
-    if (hasClienteId) {
-        const clienteId = Number(data.cliente_id);
-        if (!Number.isInteger(clienteId) || clienteId <= 0) {
-            throw new Error('El cliente_id es obligatorio y debe ser válido');
+    try {
+        await connection.beginTransaction();
+
+        const resolvedClient = await resolveClientForSale(data, connection);
+        const codigoCliente = resolvedClient.codigoCliente ? String(resolvedClient.codigoCliente).trim() : '';
+
+        const insertColumns = [];
+        const insertValues = [];
+        const params = [];
+
+        if (hasClienteId) {
+            if (!Number.isInteger(Number(resolvedClient.clienteId)) || Number(resolvedClient.clienteId) <= 0) {
+                throw new Error('El cliente_id es obligatorio y debe ser válido');
+            }
+
+            insertColumns.push('cliente_id');
+            insertValues.push('?');
+            params.push(Number(resolvedClient.clienteId));
         }
-        insertColumns.push('cliente_id');
-        insertValues.push('?');
-        params.push(clienteId);
+
+        if (hasCodigoCliente) {
+            insertColumns.push('codigo_cliente');
+            insertValues.push('?');
+            params.push(codigoCliente);
+        }
+
+        insertColumns.push('fecha', 'total', 'estado', 'vendedor');
+        insertValues.push('NOW()', '?', '?', '?');
+        params.push(total, estado, data.vendedor.trim());
+
+        const sql = `
+            INSERT INTO ventas (${insertColumns.join(', ')})
+            VALUES (${insertValues.join(', ')})
+        `;
+
+        const [result] = await connection.execute(sql, params);
+
+        const puntosObtenidos = estado.toUpperCase() === 'CONFIRMADA'
+            ? calculateEarnedPoints(total, loyaltyConfig)
+            : 0;
+
+        let puntosActuales = Number(resolvedClient.puntosAcumulados || 0);
+
+        if (estado.toUpperCase() === 'CONFIRMADA') {
+            if (puntosObtenidos > 0) {
+                puntosActuales += puntosObtenidos;
+
+                await connection.execute(
+                    `
+                        UPDATE clientes
+                        SET puntos_acumulados = ?
+                        WHERE ${
+                            resolvedClient.clienteId && resolvedClient.idColumn
+                                ? `\`${resolvedClient.idColumn}\` = ?`
+                                : `\`${resolvedClient.codeColumn}\` = ?`
+                        }
+                        LIMIT 1
+                    `,
+                    resolvedClient.clienteId && resolvedClient.idColumn
+                        ? [puntosActuales, Number(resolvedClient.clienteId)]
+                        : [puntosActuales, codigoCliente]
+                );
+            }
+
+            await connection.execute(
+                `
+                    INSERT INTO puntos_cliente_log (
+                        cliente_id,
+                        codigo_cliente,
+                        factura_id,
+                        puntos_obtenidos,
+                        total_compra,
+                        monto_por_punto,
+                        puntos_por_bloque,
+                        tipo_evento,
+                        fecha_registro
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'PUNTOS_OBTENIDOS', NOW())
+                `,
+                [
+                    resolvedClient.clienteId ?? null,
+                    codigoCliente,
+                    result.insertId,
+                    puntosObtenidos,
+                    total,
+                    loyaltyConfig.monto_por_punto,
+                    loyaltyConfig.puntos_por_bloque
+                ]
+            );
+        }
+
+        await connection.commit();
+
+        return {
+            message: 'Venta creada correctamente',
+            id: result.insertId,
+            loyalty: {
+                puntos_obtenidos: puntosObtenidos,
+                puntos_acumulados: puntosActuales,
+                factura_id: result.insertId,
+                monto_por_punto: loyaltyConfig.monto_por_punto,
+                puntos_por_bloque: loyaltyConfig.puntos_por_bloque
+            }
+        };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
     }
-
-    if (hasCodigoCliente) {
-        insertColumns.push('codigo_cliente');
-        insertValues.push('?');
-        params.push(codigoCliente);
-    }
-
-    insertColumns.push('fecha', 'total', 'estado', 'vendedor');
-    insertValues.push('NOW()', '?', '?', '?');
-    params.push(total, estado, data.vendedor.trim());
-
-    const sql = `
-        INSERT INTO ventas (${insertColumns.join(', ')})
-        VALUES (${insertValues.join(', ')})
-    `;
-
-    const [result] = await db.execute(sql, params);
-
-    return { message: 'Venta creada correctamente', id: result.insertId };
 };
 
 exports.getVendedores = async () => {
@@ -538,6 +828,42 @@ exports.getVendedoresRendimiento = async (period) => {
 
     const [rows] = await db.execute(sql);
     return rows;
+};
+
+exports.getLoyaltyConfig = async () => {
+    const config = await getLoyaltyConfigRecord();
+    return {
+        ...config,
+        descripcion: `${config.puntos_por_bloque} punto(s) por cada $${config.monto_por_punto}`
+    };
+};
+
+exports.updateLoyaltyConfig = async (data) => {
+    const montoPorPunto = Number(data.monto_por_punto);
+    const puntosPorBloque = Number(data.puntos_por_bloque);
+
+    if (!Number.isFinite(montoPorPunto) || montoPorPunto <= 0) {
+        throw new Error('El monto por punto debe ser mayor que 0');
+    }
+
+    if (!Number.isInteger(puntosPorBloque) || puntosPorBloque <= 0) {
+        throw new Error('Los puntos por bloque deben ser un entero mayor que 0');
+    }
+
+    await ensureLoyaltyInfrastructure();
+    await db.execute(
+        `
+            UPDATE configuracion_fidelizacion
+            SET monto_por_punto = ?, puntos_por_bloque = ?
+            WHERE id = 1
+        `,
+        [montoPorPunto, puntosPorBloque]
+    );
+
+    return {
+        message: 'Configuración de fidelización actualizada correctamente',
+        ...(await exports.getLoyaltyConfig())
+    };
 };
 
 exports.updateClient = async (clientRef, data) => {
